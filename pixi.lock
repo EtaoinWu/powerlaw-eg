@@ -1706,7 +1706,7 @@ packages:
 - pypi: ./
   name: powerlaw-eg
   version: 0.1.0
-  sha256: 46dd35b3d2d58916c45831008a8122de50994867c8e757768d04db1bf3285fd5
+  sha256: 81055527a1405047e1b1f63149d9c52a84e2da316c0462d4d2142e779065fcb5
   requires_dist:
   - typinox>=0.5.0,<0.6
   requires_python: '>=3.14'
