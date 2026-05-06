@@ -1,0 +1,65 @@
+[project]
+# Anonymized for NeurIPS submission
+authors = [{name = "Anonymous", email = "anonymous@example.com"}]
+dependencies = ["typinox>=0.5.0,<0.6"]
+name = "powerlaw-eg"
+requires-python = ">= 3.14"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+powerlaw_eg = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+python = ">=3.14"
+ipykernel = ">=7.2.0,<8"
+matplotlib-base = ">=3.10.9,<4"
+seaborn = ">=0.13.2,<0.14"
+
+[tool.pixi.feature.dev.dependencies]
+pytest = ">=9.0.3,<10"
+mypy = ">=1.20.2,<2"
+pyright = ">=1.1.409,<2"
+ruff = ">=0.15.11,<0.16"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[tool.ruff]
+line-length = 80
+target-version = "py314"
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+typing-modules = ["beartype.typing"]
+select = [
+  "E4", "E7", "E9",
+  "F",
+  "UP", # pyupgrade
+  "I",   # isort
+]
+ignore = ["F722", "E741"]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["F401", "E731"]
+
+[tool.ruff.lint.isort]
+force-wrap-aliases = true
+combine-as-imports = true
+
+[tool.pyright]
+reportIncompatibleVariableOverride = false  # Incompatible with eqx.AbstractVar
+
+[[tool.mypy.overrides]]
+module = ["typinox.*"]
+follow_untyped_imports = true
