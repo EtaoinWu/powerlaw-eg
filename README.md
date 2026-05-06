@@ -13,11 +13,14 @@ pixi install --environment dev
 
 ## Linting
 
-The code is linted using [ruff](https://github.com/astral-sh/ruff), [pyright](https://github.com/microsoft/pyright), and [mypy](https://www.mypy-lang.org/). The linters are installed with the development environment. To run the linters, use:
+The code is linted using [ruff](https://github.com/astral-sh/ruff), [pyright](https://github.com/microsoft/pyright), and [mypy](https://www.mypy-lang.org/). 
+The unit tests are performed with [pytest](https://docs.pytest.org/).
+These packages are installed with the development environment. To run the linters, use:
 
 ```bash
 pixi run --environment dev ruff check src
 pixi run --environment dev ruff format --check src
 pixi run --environment dev pyright src
 pixi run --environment dev mypy src
+pixi run --environment dev pytest .
 ```

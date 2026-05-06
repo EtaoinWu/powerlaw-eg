@@ -16,24 +16,49 @@ def identity[T](x: T) -> T:
 
 @typed
 def C(x: Float[ScalarLike, ""]) -> Float[Scalar, ""]:
+    """Convert a scalar-like float to a JAX scalar."""
     return jnp.float_(x)
 
 
 @typed
 def Ci(x: Integer[ScalarLike, ""]) -> Integer[Scalar, ""]:
+    """Convert a scalar-like integer to a JAX scalar."""
     return jnp.int_(x)
 
 
 def normalize(x):
+    """Normalize an array by its sum.
+
+    Parameters
+    ----------
+    x
+        Array-like weights.
+
+    Returns
+    -------
+    Array
+        ``x / sum(x)``.
+    """
     return x / jnp.sum(x)
 
 
 def tree_stack(trees):
-    """Takes a list of trees and stacks every corresponding leaf.
-    For example, given two trees ((a, b), c) and ((a', b'), c'), returns
-    ((stack(a, a'), stack(b, b')), stack(c, c')).
-    Useful for turning a list of objects into something you can feed to a
-    vmapped function.
+    """Stack matching leaves from a sequence of PyTrees.
+
+    Parameters
+    ----------
+    trees
+        Sequence of PyTrees with identical structure.
+
+    Returns
+    -------
+    PyTree
+        PyTree whose leaves are stacked along a new leading axis.
+
+    Notes
+    -----
+    For ``([a, b], c)`` and ``([a', b'], c')``, returns
+    ``([stack(a, a'), stack(b, b')], stack(c, c'))``.
     """
     leaves_list = []
     treedef_list = []
@@ -48,11 +73,17 @@ def tree_stack(trees):
 
 
 def tree_unstack(tree):
-    """Takes a tree and turns it into a list of trees. Inverse of tree_stack.
-    For example, given a tree ((a, b), c), where a, b, and c all have first
-    dimension k, will make k trees
-    [((a[0], b[0]), c[0]), ..., ((a[k], b[k]), c[k])]
-    Useful for turning the output of a vmapped function into normal objects.
+    """The inverse of ``tree_stack``; unstack a PyTree in the leading axis.
+
+    Parameters
+    ----------
+    tree
+        PyTree whose leaves share a leading dimension.
+
+    Yields
+    ------
+    PyTree
+        One unbatched PyTree per leading-axis index.
     """
     leaves, treedef = jt.flatten(tree)
     n_trees = leaves[0].shape[0]
@@ -62,6 +93,19 @@ def tree_unstack(tree):
 
 
 def tree_concat(*args):
+    """Concatenate matching leaves from PyTrees along axis zero.
+
+    Parameters
+    ----------
+    *args
+        PyTrees with identical structure and concatenable leaves.
+
+    Returns
+    -------
+    PyTree
+        PyTree with corresponding leaves concatenated along the leading axis.
+    """
+
     def _concat(*args):
         return jnp.concatenate(args, axis=0)
 

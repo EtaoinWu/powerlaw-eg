@@ -16,7 +16,25 @@ from .utils import typed
 
 
 @typed
-def gradient_update(params, grads, stepsize: Float[ScalarLike, ""] | None = None):
+def gradient_update(
+    params, grads, stepsize: Float[ScalarLike, ""] | None = None
+):
+    """Apply a tree-structured gradient step.
+
+    Parameters
+    ----------
+    params
+        PyTree of parameters.
+    grads
+        PyTree of gradients with the same structure as ``params``.
+    stepsize
+        Optional scalar multiplier. If ``None``, a unit step is used.
+
+    Returns
+    -------
+    PyTree
+        Updated parameters ``params - stepsize * grads``.
+    """
     if stepsize is None:
 
         def _update(param, grad):
@@ -31,6 +49,23 @@ def gradient_update(params, grads, stepsize: Float[ScalarLike, ""] | None = None
 
 @typed
 def anchoring(params, bases, alpha: Float[ScalarLike, ""]):
+    """Interpolate a parameter tree toward a base tree.
+
+    Parameters
+    ----------
+    params
+        Current parameter PyTree.
+    bases
+        Base parameter PyTree.
+    alpha
+        Weight on ``bases``.
+
+    Returns
+    -------
+    PyTree
+        Convex combination ``(1 - alpha) * params + alpha * bases``.
+    """
+
     def _anchor(param, base):
         return (1 - alpha) * param + alpha * base
 
@@ -39,6 +74,18 @@ def anchoring(params, bases, alpha: Float[ScalarLike, ""]):
 
 @typed
 def tree_norm(tree) -> Float[Scalar, ""]:
+    """Compute L2 norm over pytree.
+
+    Parameters
+    ----------
+    tree
+        PyTree of arrays.
+
+    Returns
+    -------
+    Float[Scalar, ""]
+        L2 norm of all the arrays concatenated.
+    """
     leaves = jt.leaves(tree)
     return jnp.sqrt(
         sum(
@@ -50,6 +97,8 @@ def tree_norm(tree) -> Float[Scalar, ""]:
 
 
 class DescentOutput(tpx.TypedModule):
+    """Per-iteration state recorded by descent algorithms."""
+
     trajectory: StrategyProfile
     gradient_norm: Float[Scalar, ""]
 
@@ -63,6 +112,26 @@ def gradient_descent(
     n_iter: int,
     key: Key[Scalar, ""] | None = None,
 ) -> Vmapped[DescentOutput, " {n_iter}"]:
+    """Run standard gradient descent.
+
+    Parameters
+    ----------
+    game
+        Differentiable game supplying per-player gradients.
+    init_params
+        Initial strategy profile.
+    schedule
+        Stepsize schedule.
+    n_iter
+        Number of iterations.
+    key
+        Optional JAX random key for stochastic schedules.
+
+    Returns
+    -------
+    DescentOutput[n_iter]
+        Pre-update trajectory and gradient norm at each iteration.
+    """
     specs = schedule(n_iter, key=key)  # type: ignore
 
     @typed
@@ -70,6 +139,8 @@ def gradient_descent(
         params: StrategyProfile, spec: StepsizeSpec
     ) -> tuple[StrategyProfile, DescentOutput]:
         grad = game.grad(params)
+        # Record pre-update state so trajectory[t] and gradient_norm[t]
+        # refer to the same iterate.
         output = DescentOutput(
             trajectory=params,
             gradient_norm=tree_norm(grad),
@@ -91,6 +162,26 @@ def extragradient(
     n_iter: int,
     key: Key[Scalar, ""] | None = None,
 ) -> Vmapped[DescentOutput, " {n_iter}"]:
+    """Run the extragradient method.
+
+    Parameters
+    ----------
+    game
+        Differentiable game supplying per-player gradients.
+    init_params
+        Initial strategy profile.
+    schedule
+        Schedule of extrapolation and descent stepsizes.
+    n_iter
+        Number of iterations.
+    key
+        Optional JAX random key for stochastic schedules.
+
+    Returns
+    -------
+    DescentOutput[n_iter]
+        Pre-update trajectory and gradient norm at each iteration.
+    """
     specs = schedule(n_iter, key=key)  # type: ignore
 
     @typed
@@ -98,6 +189,7 @@ def extragradient(
         params: StrategyProfile, spec: EGStepsizeSpec
     ) -> tuple[StrategyProfile, DescentOutput]:
         grad = game.grad(params)
+        # Record at the current point before the extragradient correction.
         output = DescentOutput(
             trajectory=params,
             gradient_norm=tree_norm(grad),
@@ -125,6 +217,33 @@ def anchored_extragradient(
     n_iter: int,
     key: Key[Scalar, ""] | None = None,
 ) -> Vmapped[DescentOutput, " {n_iter}"]:
+    """Run Extragradient with anchoring.
+    See:
+        Taeho Yoon and Ernest K. Ryu, “Accelerated algorithms for smooth
+        convex-concave minimax problems with O(1/k^2) rate on squared
+        gradient norm,” in Proceedings of the 38th International
+        Conference on Machine Learning, July 2021, pp. 12098–12109.
+        Available: https://proceedings.mlr.press/v139/yoon21d.html
+
+
+    Parameters
+    ----------
+    game
+        Differentiable game supplying per-player gradients.
+    init_params
+        Initial strategy profile and anchor point.
+    schedule
+        Schedule of extrapolation and descent stepsizes.
+    n_iter
+        Number of iterations.
+    key
+        Optional JAX random key for stochastic schedules.
+
+    Returns
+    -------
+    DescentOutput[n_iter]
+        Pre-update trajectory and gradient norm at each iteration.
+    """
     specs = schedule(n_iter, key=key)  # type: ignore
 
     @typed
@@ -139,6 +258,8 @@ def anchored_extragradient(
             gradient_norm=tree_norm(grad),
         )
 
+        # The first scan index is zero, so idx + 2 gives anchor weights
+        # 1/2, 1/3, ...
         basepoint = anchoring(params, init_params, alpha=1.0 / (idx + 2))
         e_params = gradient_update(
             basepoint, grad, stepsize=spec.extrapolation_stepsize

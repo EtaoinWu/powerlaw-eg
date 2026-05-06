@@ -9,24 +9,56 @@ from .utils import C, normalize
 
 
 class DistributionBase(tpx.TypedModule):
-    """
-    A distribution over R that can be sampled from.
+    """Scalar distribution sampled by inverse transform.
+
+    Subclasses define a CDF and a quantile map from a scalar uniform
+    variate. The base class adds JAX RNG handling and shape broadcasting.
     """
 
     @abc.abstractmethod
     def cdf(self, x: Float[Scalar, ""]) -> Float[Scalar, ""]:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : float
+            Scalar evaluation point.
+
+        Returns
+        -------
+        float
+            Probability mass at or below ``x``.
+        """
         pass
 
     @abc.abstractmethod
     def generate(self, u: Float[Scalar, ""]) -> Float[Scalar, ""]:
-        """
-        Generates a sample from a U[0, 1] random variable.
+        """Map a unit-uniform variate to a sample.
+
+        Parameters
+        ----------
+        u : float
+            Scalar value in ``[0, 1]``.
+
+        Returns
+        -------
+        float
+            Quantile corresponding to ``u``.
         """
         pass
 
     def _generate(self, u: Float[Array, "*shape"]) -> Float[Array, "*shape"]:
-        """
-        Helper function that broadcasts .generate() over arbitrary shapes.
+        """Broadcast ``generate`` over an arbitrary array shape.
+
+        Parameters
+        ----------
+        u
+            Array of unit-uniform variates.
+
+        Returns
+        -------
+        Array
+            Samples with the same shape as ``u``.
         """
         if u.ndim == 0:
             return self.generate(u)
@@ -36,14 +68,27 @@ class DistributionBase(tpx.TypedModule):
     def sample(
         self, key: Key[Scalar, ""], shape: tuple[int, ...]
     ) -> Float[Array, " *"]:
-        """
-        Generates samples from the distribution.
+        """Draw samples with JAX randomness.
+
+        Parameters
+        ----------
+        key
+            JAX random key.
+        shape
+            Desired sample shape.
+
+        Returns
+        -------
+        Array of shape ``shape``
+            Samples from the distribution.
         """
         u = jax.random.uniform(key, shape=shape)
         return self._generate(u)
 
 
 class PointMass(DistributionBase):
+    """Degenerate distribution concentrated at one scalar."""
+
     value: Float[Scalar, ""] = tpx.field(default=0.0, converter=C)
 
     def cdf(self, x: Float[Scalar, ""]) -> Float[Scalar, ""]:
@@ -54,6 +99,8 @@ class PointMass(DistributionBase):
 
 
 class UniformDistribution(DistributionBase):
+    """Uniform distribution on a finite interval."""
+
     low: Float[Scalar, ""] = tpx.field(default=0.0, converter=C)
     high: Float[Scalar, ""] = tpx.field(default=1.0, converter=C)
 
@@ -65,6 +112,11 @@ class UniformDistribution(DistributionBase):
 
 
 class ParetoDistribution(DistributionBase):
+    """
+    Pareto distribution with support ``[scale, inf)`` and power-law tail
+    decay parameter ``shape``.
+    """
+
     scale: Float[Scalar, ""] = tpx.field(default=1.0, converter=C)
     shape: Float[Scalar, ""] = tpx.field(default=1.0, converter=C)
 
@@ -80,6 +132,8 @@ class ParetoDistribution(DistributionBase):
 
 
 class ArcsineDistribution(DistributionBase):
+    """Arcsine distribution on ``[0, 1]``."""
+
     def cdf(self, x: Float[Scalar, ""]) -> Float[Scalar, ""]:
         x = jnp.clip(x, 0.0, 1.0)
         return (2.0 / jnp.pi) * jnp.arcsin(jnp.sqrt(x))
@@ -89,13 +143,14 @@ class ArcsineDistribution(DistributionBase):
 
 
 class Mixture(DistributionBase):
+    """Finite mixture of scalar distributions."""
+
     components: tuple[DistributionBase, ...]
-    weights: Float[Array, " n_component"] = tpx.field(
-        converter=lambda x: normalize(jnp.array(x))
-    )
+    weights: Float[Array, " n_component"] = tpx.field(converter=jnp.array)
     acc_weights: Float[Array, " n_component"] = tpx.field(default=None)
 
     def __post_init__(self):
+        # post init happens before converter
         self.weights = normalize(jnp.array(self.weights))
         self.acc_weights = jnp.cumsum(self.weights)
 
@@ -116,6 +171,8 @@ class Mixture(DistributionBase):
             self.acc_weights > u,
             axis=0,
         )
+        # Rescale global ``u`` to each component interval; only the selected
+        # component value is returned, but all values stay JAX-traceable.
         us = (u - (self.acc_weights - self.weights)) / self.weights
         us = jnp.clip(us, 0.0, 1.0)
         xs = jnp.array([d.generate(u) for d, u in zip(self.components, us)])
@@ -123,6 +180,8 @@ class Mixture(DistributionBase):
 
 
 class LinearTransform(DistributionBase):
+    """Distribution of ``shift + scale * X``, where X ~ inner."""
+
     inner: DistributionBase
     scale: Float[Scalar, ""] = tpx.field(default=1.0, converter=C)
     shift: Float[Scalar, ""] = tpx.field(default=0.0, converter=C)
@@ -135,6 +194,8 @@ class LinearTransform(DistributionBase):
 
 
 class Reciprocal(DistributionBase):
+    """Distribution of ``1 / X`` for positive-support ``X``."""
+
     inner: DistributionBase
 
     def cdf(self, x: Float[Scalar, ""]) -> Float[Scalar, ""]:
