@@ -209,6 +209,63 @@ def extragradient(
 
 
 @typed
+def optimistic_gradient(
+    game: DifferentiableGameBase,
+    init_params: StrategyProfile,
+    schedule: ScheduleBase[EGStepsizeSpec]
+    | DeterministicScheduleBase[EGStepsizeSpec],
+    n_iter: int,
+    key: Key[Scalar, ""] | None = None,
+) -> Vmapped[DescentOutput, " {n_iter}"]:
+    """Run the optimistic gradient (OG) algorithm.
+
+    Parameters
+    ----------
+    game
+        Differentiable game supplying per-player gradients.
+    init_params
+        Initial strategy profile.
+    schedule
+        Schedule of extrapolation and descent stepsizes.
+    n_iter
+        Number of iterations.
+    key
+        Optional JAX random key for stochastic schedules.
+
+    Returns
+    -------
+    DescentOutput[n_iter]
+        Pre-update trajectory and gradient norm at each iteration.
+    """
+    specs = schedule(n_iter, key=key)  # type: ignore
+
+    @typed
+    def step(
+        state: tuple[StrategyProfile, StrategyProfile], spec: EGStepsizeSpec
+    ) -> tuple[tuple[StrategyProfile, StrategyProfile], DescentOutput]:
+        params, last_grad = state
+        output = DescentOutput(
+            trajectory=params,
+            gradient_norm=tree_norm(last_grad),
+        )
+
+        e_params = gradient_update(
+            params, last_grad, stepsize=spec.extrapolation_stepsize
+        )
+        e_grad = game.grad(e_params)
+        new_params = gradient_update(
+            params, e_grad, stepsize=spec.descent_stepsize
+        )
+        new_state = (new_params, e_grad)
+        return new_state, output
+
+    _, outputs = jax.lax.scan(
+        step, (init_params, game.grad(init_params)), specs, length=n_iter
+    )
+    return outputs
+
+
+@typed
 def anchored_extragradient(
     game: DifferentiableGameBase,
     init_params: StrategyProfile,
@@ -272,5 +329,68 @@ def anchored_extragradient(
 
     _, outputs = jax.lax.scan(
         step, init_params, (jnp.arange(n_iter), specs), length=n_iter
+    )
+    return outputs
+
+
+@typed
+def anchored_optimistic_gradient(
+    game: DifferentiableGameBase,
+    init_params: StrategyProfile,
+    schedule: ScheduleBase[EGStepsizeSpec]
+    | DeterministicScheduleBase[EGStepsizeSpec],
+    n_iter: int,
+    key: Key[Scalar, ""] | None = None,
+) -> Vmapped[DescentOutput, " {n_iter}"]:
+    """Run the anchored optimistic gradient (OG) algorithm.
+
+    Parameters
+    ----------
+    game
+        Differentiable game supplying per-player gradients.
+    init_params
+        Initial strategy profile and anchor point.
+    schedule
+        Schedule of extrapolation and descent stepsizes.
+    n_iter
+        Number of iterations.
+    key
+        Optional JAX random key for stochastic schedules.
+
+    Returns
+    -------
+    DescentOutput[n_iter]
+        Pre-update trajectory and gradient norm at each iteration.
+    """
+    specs = schedule(n_iter, key=key)  # type: ignore
+
+    @typed
+    def step(
+        state: tuple[StrategyProfile, StrategyProfile],
+        indexed_spec: tuple[Integer[Scalar, ""], EGStepsizeSpec],
+    ) -> tuple[tuple[StrategyProfile, StrategyProfile], DescentOutput]:
+        params, last_grad = state
+        idx, spec = indexed_spec
+        output = DescentOutput(
+            trajectory=params,
+            gradient_norm=tree_norm(last_grad),
+        )
+        basepoint = anchoring(params, init_params, alpha=1.0 / (idx + 2))
+
+        e_params = gradient_update(
+            basepoint, last_grad, stepsize=spec.extrapolation_stepsize
+        )
+        e_grad = game.grad(e_params)
+        new_params = gradient_update(
+            basepoint, e_grad, stepsize=spec.descent_stepsize
+        )
+        new_state = (new_params, e_grad)
+        return new_state, output
+
+    _, outputs = jax.lax.scan(
+        step,
+        (init_params, game.grad(init_params)),
+        (jnp.arange(n_iter), specs),
+        length=n_iter,
     )
     return outputs

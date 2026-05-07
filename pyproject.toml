@@ -27,6 +27,8 @@ python = ">=3.14"
 ipykernel = ">=7.2.0,<8"
 matplotlib-base = ">=3.10.9,<4"
 seaborn = ">=0.13.2,<0.14"
+tqdm = ">=4.67.3,<5"
+ipywidgets = ">=8.1.8,<9"
 
 [tool.pixi.feature.dev.dependencies]
 pytest = ">=9.0.3,<10"
