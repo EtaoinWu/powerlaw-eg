@@ -123,6 +123,21 @@ class IIDSchedule(ScheduleBase[StepsizeSpec]):
         return jax.vmap(StepsizeSpec)(samples)
 
 
+class DrawOnceSchedule(ScheduleBase[StepsizeSpec]):
+    """Schedule that samples stepsizes once from a distribution and use it throughout."""
+
+    distribution: DistributionBase
+
+    def __call__(
+        self, n_iter: int, *, key: Key[Scalar, ""]
+    ) -> Vmapped[StepsizeSpec, " {n_iter}"]:
+        """Draw ``n_iter`` independent stepsize specifications."""
+        distribution: DistributionBase = self.distribution
+        samples = distribution.sample(shape=(1,), key=key)
+        samples = jnp.repeat(samples, n_iter, axis=0)
+        return jax.vmap(StepsizeSpec)(samples)
+
+
 class EGScheduleFrom(ScheduleBase[EGStepsizeSpec]):
     """Convert a one-step schedule into an extragradient schedule."""
 

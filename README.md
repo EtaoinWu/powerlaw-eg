@@ -1,8 +1,8 @@
 # Power-Law stepsizes in min-max optimization
 
-This repository contains the code for the NeurIPS 2026 submission #29265.
+This repository contains the code for the the manuscript, titled *Accelerating Min-Max Optimization via Power-Law Stepsizes*, by [Yue Wu](https://wuy.me), [Weiqiang Zheng](https://weiqiang-zheng.com/), [Yang Cai](https://www.cs.yale.edu/homes/cai/), and [Haipeng Luo](https://haipeng-luo.net/).
 
-## Reproducibility
+## Setup
 
 The code manages its environment using [Pixi](https://pixi.prefix.dev/). To set up the environment, run:
 
@@ -24,3 +24,9 @@ pixi run --environment dev pyright src
 pixi run --environment dev mypy src
 pixi run --environment dev pytest .
 ```
+
+## Experiments
+
+The code for the experiments used in the paper is located in the `experiments/` directory, as ipython notebook files. You can run all cells in the notebooks in order ("run all") to reproduce the results in the paper.
+
+The random seeds for the experiments are set fixed to ensure reproducibility. The output of the experiments in the `results/` directory should be identical to the plots in the paper.
